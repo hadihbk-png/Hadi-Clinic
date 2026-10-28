@@ -44,4 +44,27 @@ if (!columns.some(column => column.name === 'confirmationEmailSentAt')) {
 }
 db.exec('CREATE INDEX IF NOT EXISTS idx_appointments_stripeSessionId ON appointments (stripeSessionId)');
 
+// Users (staff accounts; patients default to role 'patient')
+db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    passwordHash TEXT NOT NULL,
+    createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+const userColumns = db.prepare('PRAGMA table_info(users)').all();
+if (!userColumns.some(column => column.name === 'role')) {
+  db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'patient'");
+}
+
+// Login sessions (only a hash of the cookie token is stored)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS sessions (
+    tokenHash TEXT PRIMARY KEY,
+    userId INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expiresAt INTEGER NOT NULL
+  )
+`);
+
 module.exports = db;

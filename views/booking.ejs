@@ -82,22 +82,36 @@
       color: inherit;
     }
 
-    .specialty-option.selected, .doctor-option.selected {
+    /* Highlight the choice as soon as it is tapped (not only after the next page load) */
+    .specialty-option.selected, .doctor-option.selected,
+    .specialty-option:has(input:checked), .doctor-option:has(input:checked) {
       border-color: #0066cc;
       background: #e6f0ff;
       font-weight: 600;
     }
 
+    .specialty-option:has(input:focus-visible), .time-slot:has(input:focus-visible) {
+      outline: 2px solid #0066cc;
+      outline-offset: 2px;
+    }
+
+    .time-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+      gap: 8px;
+    }
+
     .time-slot {
       cursor: pointer;
-      padding: 10px;
-      margin: 5px;
+      min-height: 44px;
       border: 2px solid #e6f0ff;
       border-radius: 6px;
-      display: inline-block;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       transition: all 0.3s ease;
-      text-decoration: none;
       color: #333;
+      font-variant-numeric: tabular-nums;
     }
 
     .time-slot:hover {
@@ -105,10 +119,132 @@
       background: #f8f9fa;
     }
 
-    .time-slot.selected {
+    .time-slot.selected, .time-slot:has(input:checked) {
       border-color: #0066cc;
       background: #0066cc;
       color: white;
+    }
+
+    /* Back / Next row: same height; stacked full width on phones (main action on top) */
+    .form-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 2rem;
+    }
+
+    .form-actions .btn {
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.35rem;
+    }
+
+    .form-actions .btn-next {
+      margin-top: 0;
+      flex: 1;
+    }
+
+    @media (max-width: 576px) {
+      .booking-container {
+        margin: 1.25rem auto;
+      }
+
+      .form-actions {
+        flex-direction: column-reverse;
+      }
+
+      .form-actions .btn {
+        width: 100%;
+      }
+
+      .step-title {
+        font-size: 1.5rem;
+      }
+    }
+
+    /* Booking result pages */
+    .result-banner {
+      text-align: center;
+      border-radius: 12px;
+      padding: 2rem 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .result-banner:focus {
+      outline: none;
+    }
+
+    .result-banner.success {
+      background: #e9f7ef;
+      border: 2px solid #28a745;
+    }
+
+    .result-banner.failed {
+      background: #fdecea;
+      border: 2px solid #dc3545;
+    }
+
+    .result-banner .result-icon {
+      font-size: 3.5rem;
+      line-height: 1;
+    }
+
+    .result-banner h1 {
+      font-size: 1.9rem;
+      font-weight: 700;
+      margin: 0.75rem 0 0.5rem;
+    }
+
+    .result-banner .appointment-line {
+      font-size: 1.2rem;
+      font-weight: 600;
+      color: #1d3b2a;
+      margin-bottom: 0.25rem;
+    }
+
+    .result-banner .appointment-when {
+      font-size: 1.1rem;
+      color: #1d3b2a;
+    }
+
+    .detail-list {
+      display: grid;
+      grid-template-columns: max-content 1fr;
+      gap: 0.5rem 1rem;
+      margin: 0;
+    }
+
+    .detail-list dt {
+      color: #666;
+      font-weight: 600;
+    }
+
+    .detail-list dd {
+      margin: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .result-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: center;
+    }
+
+    @media (max-width: 576px) {
+      .result-actions .btn {
+        width: 100%;
+      }
+
+      .detail-list {
+        grid-template-columns: 1fr;
+        gap: 0.1rem;
+      }
+
+      .detail-list dd {
+        margin-bottom: 0.6rem;
+      }
     }
 
     .form-group label {
@@ -213,8 +349,9 @@
 
       <div class="summary-card">
         <strong>Date & Time:</strong><br>
+        <%# YYYY-MM-DD is parsed as UTC, so format in UTC to avoid showing the day before %>
         <% const dateObj = new Date(bookingData.date); %>
-        <%= dateObj.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) %> at <%= bookingData.time %>
+        <%= dateObj.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }) %> at <%= bookingData.time %>
       </div>
 
       <div class="summary-card">
@@ -240,12 +377,14 @@
         <input type="hidden" name="patientEmail" value="<%= bookingData.patientEmail %>">
         <input type="hidden" name="patientPhone" value="<%= bookingData.patientPhone %>">
         
-        <a href="/booking?step=4&specialty=<%= bookingData.specialty %>&date=<%= bookingData.date %>&time=<%= bookingData.time %>&patientName=<%= encodeURIComponent(bookingData.patientName) %>&patientEmail=<%= encodeURIComponent(bookingData.patientEmail) %>&patientPhone=<%= encodeURIComponent(bookingData.patientPhone) %>" class="btn btn-outline-primary">
-          <i class="bi bi-arrow-left"></i> Back
-        </a>
-        <button type="submit" class="btn btn-success btn-next">
-          <i class="bi bi-lock"></i> Confirm &amp; Pay AED 100 Deposit
-        </button>
+        <div class="form-actions mt-0">
+          <a href="/booking?step=4&specialty=<%= bookingData.specialty %>&date=<%= bookingData.date %>&time=<%= bookingData.time %>&patientName=<%= encodeURIComponent(bookingData.patientName) %>&patientEmail=<%= encodeURIComponent(bookingData.patientEmail) %>&patientPhone=<%= encodeURIComponent(bookingData.patientPhone) %>" class="btn btn-outline-primary">
+            <i class="bi bi-arrow-left"></i> Back
+          </a>
+          <button type="submit" class="btn btn-success btn-next">
+            <i class="bi bi-lock"></i> Confirm &amp; Pay AED 100 Deposit
+          </button>
+        </div>
       </form>
 
       <div class="alert alert-info mt-4" role="alert">
@@ -256,85 +395,66 @@
 
     <!-- Step 6: Booking Confirmation -->
     <% if (step === 6 && showConfirmation) { %>
-      <div style="text-align: center; padding: 2rem 0;">
-        <div style="font-size: 3rem; color: #28a745; margin-bottom: 1rem;">
-          <i class="bi bi-check-circle-fill"></i>
-        </div>
-        <h2 class="step-title" style="color: #28a745; margin-bottom: 1rem;">Booking Confirmed!</h2>
-        <p style="font-size: 1.1rem; color: #666; margin-bottom: 2rem;">
-          Your deposit has been received and your appointment is confirmed.
+      <% const [apptDay, apptTime] = booking.appointmentDateTime.split(' '); %>
+      <% const [apptY, apptM, apptD] = apptDay.split('-').map(Number); %>
+      <% const apptDate = new Date(Date.UTC(apptY, apptM - 1, apptD)).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }); %>
+
+      <div class="result-banner success" id="resultBanner" role="status" tabindex="-1">
+        <div class="result-icon text-success"><i class="bi bi-check-circle-fill"></i></div>
+        <h1 class="text-success">You're booked!</h1>
+        <p class="appointment-line"><%= booking.specialty %> with <%= booking.doctor %></p>
+        <p class="appointment-when mb-3">
+          <i class="bi bi-calendar-event"></i> <%= apptDate %> at <strong><%= apptTime %></strong>
         </p>
+        <p class="mb-1"><i class="bi bi-check2"></i> AED 100 deposit paid (refundable)</p>
+        <p class="mb-0 text-muted">Booking ID #<%= booking.id %></p>
       </div>
 
-      <div class="card border-success" style="max-width: 100%; margin-bottom: 2rem;">
-        <div class="card-header bg-success text-white">
-          <strong>Confirmation Details (Booking ID: <%= booking.id %>)</strong>
-        </div>
+      <div class="alert alert-light border mb-4" role="note">
+        <i class="bi bi-envelope-check"></i>
+        A confirmation email is on its way to <strong style="overflow-wrap: anywhere;"><%= booking.patientEmail %></strong>.
+      </div>
+
+      <div class="card mb-4">
         <div class="card-body">
-          <div class="row mb-3">
-            <div class="col-md-6">
-              <h6 class="text-primary fw-bold">Medical Information</h6>
-              <p class="mb-2">
-                <strong>Specialty:</strong><br>
-                <%= booking.specialty %>
-              </p>
-              <p class="mb-2">
-                <strong>Doctor:</strong><br>
-                <%= booking.doctor %>
-              </p>
-              <p>
-                <strong>Date & Time:</strong><br>
-                <% const apptDate = new Date(booking.appointmentDateTime); %>
-                <%= apptDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) %>
-                at <%= booking.appointmentDateTime.split(' ')[1] %>
-              </p>
-            </div>
-            <div class="col-md-6">
-              <h6 class="text-primary fw-bold">Your Information</h6>
-              <p class="mb-2">
-                <strong>Name:</strong><br>
-                <%= booking.patientName %>
-              </p>
-              <p class="mb-2">
-                <strong>Email:</strong><br>
-                <%= booking.patientEmail %>
-              </p>
-              <p>
-                <strong>Phone:</strong><br>
-                <%= booking.patientPhone %>
-              </p>
-            </div>
-          </div>
+          <h2 class="h6 text-primary fw-bold mb-3">Where to go</h2>
+          <dl class="detail-list">
+            <dt>Clinic</dt>
+            <dd>Hadi Medical Clinic, Cluster X, JLT, Dubai</dd>
+            <dt>Phone</dt>
+            <dd><a href="tel:+97141234567">+971 4 123 4567</a> (to change or cancel)</dd>
+          </dl>
 
-          <div class="alert alert-success mt-4" role="alert">
-            <i class="bi bi-check"></i>
-            <strong>Status:</strong> <%= booking.status %>
-            <br>
-            <strong>Deposit paid:</strong> AED 100.00 (refundable)
-          </div>
-
-          <p style="font-size: 0.9rem; color: #666; margin-top: 1.5rem;">
-            <i class="bi bi-info-circle"></i>
-            A confirmation email is on its way to <strong><%= booking.patientEmail %></strong>
-          </p>
+          <h2 class="h6 text-primary fw-bold mt-4 mb-3">Your details</h2>
+          <dl class="detail-list">
+            <dt>Name</dt>
+            <dd><%= booking.patientName %></dd>
+            <dt>Email</dt>
+            <dd><%= booking.patientEmail %></dd>
+            <dt>Phone</dt>
+            <dd><%= booking.patientPhone %></dd>
+            <dt>Status</dt>
+            <dd><%= booking.status %></dd>
+          </dl>
         </div>
       </div>
 
-      <div style="text-align: center;">
+      <div class="result-actions">
         <a href="/" class="btn btn-primary btn-lg">
           <i class="bi bi-house"></i> Back to Home
+        </a>
+        <a href="/booking" class="btn btn-outline-primary btn-lg">
+          <i class="bi bi-calendar-plus"></i> Book Another
         </a>
       </div>
     <% } %>
 
     <!-- Step 6: Deposit payment not completed -->
     <% if (step === 6 && locals.showPaymentIncomplete) { %>
-      <div style="text-align: center; padding: 2rem 0;">
-        <div style="font-size: 3rem; color: #dc3545; margin-bottom: 1rem;">
-          <i class="bi bi-x-circle-fill"></i>
-        </div>
-        <h2 class="step-title" style="color: #dc3545; margin-bottom: 1rem;">Payment Not Completed</h2>
-        <p style="font-size: 1.1rem; color: #666; margin-bottom: 2rem;">
+      <div class="result-banner failed" id="resultBanner" role="alert" tabindex="-1">
+        <div class="result-icon text-danger"><i class="bi bi-x-circle-fill"></i></div>
+        <h1 class="text-danger">Payment Not Completed</h1>
+        <p class="mb-0">
           <% if (booking) { %>
             We have not received your AED 100 deposit, so your appointment is <strong>not confirmed yet</strong>.
             It is saved as <strong><%= booking.status %></strong> (Booking ID: <%= booking.id %>).
@@ -344,7 +464,7 @@
         </p>
       </div>
 
-      <div style="text-align: center;">
+      <div class="result-actions">
         <a href="/booking" class="btn btn-primary btn-lg">
           <i class="bi bi-arrow-repeat"></i> Try Booking Again
         </a>
@@ -363,15 +483,17 @@
         
         <% specialties.forEach(spec => { %>
           <label class="specialty-option <%= bookingData.specialty === spec.id ? 'selected' : '' %>">
-            <input type="radio" name="specialty" value="<%= spec.id %>" <%= bookingData.specialty === spec.id ? 'checked' : '' %> style="display:none;">
+            <input type="radio" name="specialty" value="<%= spec.id %>" <%= bookingData.specialty === spec.id ? 'checked' : '' %> class="visually-hidden">
             <strong><i class="bi bi-star"></i> <%= spec.name %></strong><br>
             <small class="text-muted"><%= spec.description %></small>
           </label>
         <% }) %>
 
-        <button type="submit" class="btn btn-primary btn-next" style="width: 100%;">
-          <i class="bi bi-arrow-right"></i> Next
-        </button>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary btn-next">
+            <i class="bi bi-arrow-right"></i> Next
+          </button>
+        </div>
       </form>
     <% } %>
 
@@ -384,12 +506,12 @@
         <input type="hidden" name="specialty" value="<%= bookingData.specialty %>">
         
         <label class="doctor-option selected">
-          <input type="radio" name="doctor" value="<%= selectedSpecialty.doctor %>" checked style="display:none;">
+          <input type="radio" name="doctor" value="<%= selectedSpecialty.doctor %>" checked class="visually-hidden">
           <strong><i class="bi bi-person-badge"></i> <%= selectedSpecialty.doctor %></strong><br>
           <small class="text-muted"><%= selectedSpecialty.name %> Specialist</small>
         </label>
 
-        <div style="margin-top: 2rem;">
+        <div class="form-actions">
           <a href="/booking?step=1" class="btn btn-outline-primary">
             <i class="bi bi-arrow-left"></i> Back
           </a>
@@ -418,17 +540,17 @@
 
         <div class="form-group">
           <label>Appointment Time</label>
-          <div class="mt-3">
+          <div class="mt-3 time-grid" role="radiogroup" aria-label="Appointment time">
             <% timeSlots.forEach(slot => { %>
               <label class="time-slot <%= bookingData.time === slot ? 'selected' : '' %>">
-                <input type="radio" name="time" value="<%= slot %>" <%= bookingData.time === slot ? 'checked' : '' %> style="display:none;">
-                <small><%= slot %></small>
+                <input type="radio" name="time" value="<%= slot %>" <%= bookingData.time === slot ? 'checked' : '' %> class="visually-hidden">
+                <span><%= slot %></span>
               </label>
             <% }) %>
           </div>
         </div>
 
-        <div style="margin-top: 2rem;">
+        <div class="form-actions">
           <a href="/booking?step=2&specialty=<%= bookingData.specialty %>" class="btn btn-outline-primary">
             <i class="bi bi-arrow-left"></i> Back
           </a>
@@ -451,20 +573,20 @@
 
         <div class="form-group">
           <label for="patientName">Full Name</label>
-          <input type="text" class="form-control" id="patientName" name="patientName" value="<%= bookingData.patientName || '' %>" placeholder="Enter your full name" required>
+          <input type="text" class="form-control" id="patientName" name="patientName" autocomplete="name" value="<%= bookingData.patientName || '' %>" placeholder="Enter your full name" required>
         </div>
 
         <div class="form-group">
           <label for="patientEmail">Email Address</label>
-          <input type="email" class="form-control" id="patientEmail" name="patientEmail" value="<%= bookingData.patientEmail || '' %>" placeholder="your.email@example.com" required>
+          <input type="email" class="form-control" id="patientEmail" name="patientEmail" autocomplete="email" inputmode="email" value="<%= bookingData.patientEmail || '' %>" placeholder="your.email@example.com" required>
         </div>
 
         <div class="form-group">
           <label for="patientPhone">Phone Number</label>
-          <input type="tel" class="form-control" id="patientPhone" name="patientPhone" value="<%= bookingData.patientPhone || '' %>" placeholder="+971 50 123 4567" required>
+          <input type="tel" class="form-control" id="patientPhone" name="patientPhone" autocomplete="tel" inputmode="tel" value="<%= bookingData.patientPhone || '' %>" placeholder="+971 50 123 4567" required>
         </div>
 
-        <div style="margin-top: 2rem;">
+        <div class="form-actions">
           <a href="/booking?step=3&specialty=<%= bookingData.specialty %>&date=<%= bookingData.date %>&time=<%= bookingData.time %>" class="btn btn-outline-primary">
             <i class="bi bi-arrow-left"></i> Back
           </a>
@@ -479,10 +601,14 @@
   <!-- Footer -->
   <%- include('partials/footer') %>
 
-  <!-- Bootstrap 5 JS -->
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
   <script>
+    // Booking result: bring the success/failure message into view and announce it
+    const resultBanner = document.getElementById('resultBanner');
+    if (resultBanner) {
+      resultBanner.focus();
+    }
+
     // Disable Sundays and past dates in date picker
     const dateInput = document.getElementById('date');
     if (dateInput) {
@@ -494,7 +620,7 @@
 
       dateInput.addEventListener('change', function() {
         const selectedDate = new Date(this.value);
-        if (selectedDate.getDay() === 0) {
+        if (selectedDate.getUTCDay() === 0) {
           alert('We are closed on Sundays. Please select another date.');
           this.value = '';
         }

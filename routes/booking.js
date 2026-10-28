@@ -91,8 +91,8 @@ router.post('/submit', express.urlencoded({ extended: true }), (req, res) => {
         errors.push('Please select a future date');
       }
 
-      // Check for Sunday (day 0)
-      if (selectedDate.getDay() === 0) {
+      // Check for Sunday (day 0); the YYYY-MM-DD date is parsed as UTC midnight
+      if (selectedDate.getUTCDay() === 0) {
         errors.push('We are closed on Sundays. Please select another date');
       }
     }
@@ -116,7 +116,7 @@ router.post('/submit', express.urlencoded({ extended: true }), (req, res) => {
         errors.push('Please select a future date');
       }
 
-      if (selectedDate.getDay() === 0) {
+      if (selectedDate.getUTCDay() === 0) {
         errors.push('We are closed on Sundays. Please select another date');
       }
     }
@@ -283,7 +283,8 @@ async function bookingSuccess(req, res) {
     const session = await PaymentService.retrieveCheckoutSession(sessionId);
 
     if (session.payment_status === 'paid') {
-      if (booking.status !== 'Booked') {
+      // Only promote Pending; never undo Arrived/Done/No-show set by reception
+      if (booking.status === 'Pending') {
         AppointmentService.updateStatus(booking.id, 'Booked');
         booking.status = 'Booked';
       }

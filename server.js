@@ -1,4 +1,4 @@
-// Load settings and secrets (Stripe, SMTP, staff password) from .env
+// Load settings and secrets (Stripe, SMTP, reception login, AI key) from .env
 try {
   process.loadEnvFile();
 } catch (error) {
@@ -9,12 +9,18 @@ const express = require('express');
 const path = require('path');
 const bookingRoutes = require('./routes/booking');
 const receptionRoutes = require('./routes/reception');
+const chatRoutes = require('./routes/chat');
+const authRoutes = require('./routes/auth');
 const AppointmentService = require('./services/appointmentService');
-const { requireStaff } = require('./services/staffAuth');
+const UserService = require('./services/userService');
+const { requireRole } = require('./services/auth');
 const https = require('https');
 
 // Initialize database
 require('./data/db');
+
+// Create/update the reception staff account from .env
+UserService.seedReceptionUser();
 
 const app = express();
 const PORT = process.env.PORT || 3005;
@@ -60,8 +66,11 @@ app.get('/', (req, res) => {
   res.render('index');
 });
 
-// Admin bookings view (simple admin panel, staff only)
-app.get('/admin/bookings', requireStaff, (req, res) => {
+// Staff login and logout
+app.use('/', authRoutes);
+
+// Admin bookings view (simple admin panel, reception staff only)
+app.get('/admin/bookings', requireRole('reception'), (req, res) => {
   const allBookings = AppointmentService.getAllBookings();
   res.render('admin-bookings', {
     bookings: allBookings
@@ -71,8 +80,11 @@ app.get('/admin/bookings', requireStaff, (req, res) => {
 // Booking routes
 app.use('/booking', bookingRoutes);
 
-// Reception staff page (staff only)
-app.use('/reception', requireStaff, receptionRoutes);
+// Chat assistant API (calls the AI provider server-side)
+app.use('/api', chatRoutes);
+
+// Reception dashboard (reception role only)
+app.use('/reception', requireRole('reception'), receptionRoutes);
 
 // Stripe Checkout returns here after the deposit payment
 app.get('/booking-success', bookingRoutes.bookingSuccess);

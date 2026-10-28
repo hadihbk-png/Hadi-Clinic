@@ -14,8 +14,16 @@ When a paid booking becomes `Booked`, a confirmation email is sent once to the p
 `SMTP_HOST`, `SMTP_PORT` (465 = TLS, 587 = STARTTLS), `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` (sender address).
 For Gmail use `smtp.gmail.com`, port 465 and a Google App Password. If sending fails the error is logged, the booking stays confirmed, and sending is retried the next time the success page is opened.
 
-### Staff login and sign-off name
-- `STAFF_USER` / `STAFF_PASSWORD` - login for `/reception` and `/admin/bookings` (browser login prompt). Pages stay locked until a password is set. Use HTTPS when the site is online.
+### Chat assistant ("Ask Hadi")
+A floating chat button on every page (`views/partials/footer.ejs`) talks to `POST /api/chat`. All AI code is in `services/assistantService.js`: it answers only from the clinic facts in its system prompt, refuses medical advice (offers to book the right specialist and points to emergency care for serious symptoms), and ends every reply with the clinic sign-off. Set in `.env`:
+- `ANTHROPIC_API_KEY` - Claude API key (server-side only, never sent to the browser)
+- `CLINIC_INSURANCE` - insurers accepted, e.g. `Daman, AXA, or cash`; if empty the assistant says it doesn't know and suggests calling
+
+Each visitor is limited to 20 messages per 10 minutes.
+
+### Reception login and sign-off name
+- `RECEPTION_EMAIL` / `RECEPTION_PASSWORD` - on startup a user with role `reception` is created (or its password updated) in the `users` table, password hashed with bcryptjs. Log in at `/login`; only the `reception` role can open `/reception` and `/admin/bookings`. With no password set, nobody can log in. Use HTTPS when the site is online.
+- The reception dashboard shows today's appointments (Asia/Dubai date) grouped by doctor with Arrived / Done / No-show buttons, plus upcoming appointments with "Send reminder".
 - `BUILT_BY` - your name, shown in the site footer and email sign-offs.
 
 ### Test without a Stripe account or mail server
@@ -46,9 +54,12 @@ The server will run at **http://localhost:3005**
 | `/booking/submit` | POST | Form navigation between steps |
 | `/booking/confirm` | POST | Save booking as Pending and redirect to Stripe Checkout for the AED 100 deposit |
 | `/booking-success` | GET | Verify the deposit with Stripe; mark booking Booked only if paid |
-| `/admin/bookings` | GET | Admin dashboard - view all bookings (staff login) |
-| `/reception` | GET | Upcoming Booked appointments with "Send reminder" buttons (staff login) |
-| `/reception/:id/remind` | POST | Email a reminder to the patient (staff login) |
+| `/login`, `/logout` | GET/POST | Staff login (email + password) and logout |
+| `/admin/bookings` | GET | Admin dashboard - view all bookings (reception role) |
+| `/reception` | GET | Reception dashboard: today's appointments by doctor + upcoming (reception role) |
+| `/reception/:id/status` | POST | Mark Arrived / Done / No-show (reception role) |
+| `/reception/:id/remind` | POST | Email a reminder to the patient (reception role) |
+| `/api/chat` | POST | "Ask Hadi" chat assistant - sends the conversation to Claude (claude-haiku-5-5) server-side |
 
 ---
 

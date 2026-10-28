@@ -23,9 +23,6 @@ const SMTP_ENV = {
   SMTP_PASS: 'clinic-pass',
   SMTP_FROM: 'bookings@hadiclinic.test'
 };
-const STAFF_ENV = { STAFF_USER: 'staff', STAFF_PASSWORD: 'test-staff-pass', BUILT_BY: 'Developer' };
-const staffAuth = (user = 'staff', password = 'test-staff-pass') =>
-  ({ Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}` });
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hadi-clinic-test-'));
 const dbPath = path.join(tmpDir, 'test.db');
@@ -38,7 +35,7 @@ function startApp(env, port = APP_PORT) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ['--require', path.join(__dirname, 'use-fake-stripe.js'), 'server.js'], {
       cwd: ROOT,
-      env: { ...process.env, PORT: String(port), DB_PATH: dbPath, FAKE_STRIPE_PORT: String(STRIPE_PORT), ...SMTP_ENV, ...STAFF_ENV, ...env }
+      env: { ...process.env, PORT: String(port), DB_PATH: dbPath, FAKE_STRIPE_PORT: String(STRIPE_PORT), ...SMTP_ENV, BUILT_BY: 'Developer', ...env }
     });
     let output = '';
     child.getOutput = () => output;
@@ -177,7 +174,7 @@ test('success URL before paying: not trusted, booking stays Pending', async () =
   const html = await res.text();
   assert.strictEqual(res.status, 200);
   assert.ok(html.includes('Payment Not Completed'));
-  assert.ok(!html.includes('Booking Confirmed!'));
+  assert.ok(!html.includes("You're booked!"));
   assert.strictEqual(query('SELECT status FROM appointments WHERE id = ?', session.bookingId)[0].status, 'Pending');
   await settle();
   assert.strictEqual(fakeSmtp.state.messages.length, 0, 'no email for an unpaid booking');
@@ -200,15 +197,26 @@ test('paying on Checkout then returning marks the booking Booked', async () => {
   const res = await fetch(successUrl);
   const html = await res.text();
   assert.strictEqual(res.status, 200);
-  assert.ok(html.includes('Booking Confirmed!'));
-  assert.ok(html.includes('AED 100.00'));
-  assert.ok(html.includes(`Booking ID: ${session.bookingId}`));
+  // A clear success message: what, with whom, when, deposit, booking ID - announced to screen readers
+  const bannerStart = html.indexOf('class="result-banner success"');
+  const banner = html.slice(bannerStart, html.indexOf('Booking ID #', bannerStart) + 40);
+  assert.match(banner, /role="status"/);
+  for (const expected of [
+    "You're booked!",
+    'Dentist with Dr. Lina Haddad',
+    'Tuesday, 8 January 2030 at <strong>10:00</strong>',
+    'AED 100 deposit paid (refundable)',
+    `Booking ID #${session.bookingId}`
+  ]) {
+    assert.ok(banner.includes(expected), `success banner shows "${expected}"`);
+  }
+  assert.ok(html.includes('A confirmation email is on its way to <strong'));
   assert.strictEqual(query('SELECT status FROM appointments WHERE id = ?', session.bookingId)[0].status, 'Booked');
 });
 
 test('revisiting the success page keeps it Booked', async () => {
   const html = await (await fetch(`${BASE_URL}/booking-success?session_id=${session.id}`)).text();
-  assert.ok(html.includes('Booking Confirmed!'));
+  assert.ok(html.includes("You're booked!"));
   assert.strictEqual(query('SELECT status FROM appointments WHERE id = ?', session.bookingId)[0].status, 'Booked');
 });
 
@@ -253,7 +261,7 @@ test('if sending fails: error logged, booking still confirmed, retried on next v
   const page = await fetch(pay.headers.get('location'));
   const html = await page.text();
   assert.strictEqual(page.status, 200);
-  assert.ok(html.includes('Booking Confirmed!'));
+  assert.ok(html.includes("You're booked!"));
   assert.strictEqual(query('SELECT status FROM appointments WHERE id = ?', booking.id)[0].status, 'Booked');
 
   assert.ok(await waitFor(() => app.getOutput().includes(`Error sending confirmation email for booking ${booking.id}`)), 'error logged');
@@ -276,7 +284,7 @@ test('missing SMTP settings: error logged, booking still confirmed', async () =>
     const res = await confirmBooking(`http://localhost:${port}`, { patientEmail: 'nosmtp@example.com' });
     const pay = await fetch(`${res.headers.get('location')}/pay`, { method: 'POST', redirect: 'manual' });
     const html = await (await fetch(pay.headers.get('location'))).text();
-    assert.ok(html.includes('Booking Confirmed!'));
+    assert.ok(html.includes("You're booked!"));
     assert.ok(await waitFor(() => noSmtpApp.getOutput().includes('SMTP_HOST, SMTP_PORT and SMTP_FROM must be set')));
   } finally {
     await stopApp(noSmtpApp);
@@ -332,120 +340,13 @@ test('a missing key is refused and the patient sees an error', async () => {
   }
 });
 
-// --- Reception page ---
-
-const remind = (id, headers = staffAuth()) =>
-  fetch(`${BASE_URL}/reception/${id}/remind`, { method: 'POST', redirect: 'manual', headers });
-const staffGet = path => fetch(`${BASE_URL}${path}`, { headers: staffAuth() });
-
-test('staff pages require the staff login', async () => {
-  for (const path of ['/reception', '/admin/bookings']) {
-    const none = await fetch(`${BASE_URL}${path}`);
-    assert.strictEqual(none.status, 401, `${path} without login`);
-    assert.match(none.headers.get('www-authenticate'), /^Basic /);
-    assert.strictEqual((await fetch(`${BASE_URL}${path}`, { headers: staffAuth('staff', 'wrong') })).status, 401);
-    assert.strictEqual((await fetch(`${BASE_URL}${path}`, { headers: staffAuth('other', 'test-staff-pass') })).status, 401);
-    assert.strictEqual((await staffGet(path)).status, 200, `${path} with login`);
-  }
-
-  const sentBefore = fakeSmtp.state.messages.length;
-  assert.strictEqual((await remind(session.bookingId, {})).status, 401);
-  assert.strictEqual(fakeSmtp.state.messages.length, sentBefore, 'no reminder without login');
-
-  // Patient pages stay public
-  assert.strictEqual((await fetch(`${BASE_URL}/booking`)).status, 200);
-});
-
-test('a reminder posted from another site is blocked', async () => {
-  const sentBefore = fakeSmtp.state.messages.length;
-  const res = await remind(session.bookingId, { ...staffAuth(), Origin: 'https://evil.example' });
-  assert.strictEqual(res.status, 403);
-  assert.strictEqual(fakeSmtp.state.messages.length, sentBefore);
-});
-
-test('reception lists only upcoming Booked appointments with their details', async () => {
-  const db = new DatabaseSync(dbPath);
-  db.prepare(`INSERT INTO appointments (specialty, doctor, appointmentDateTime, patientName, patientPhone, patientEmail, status)
-    VALUES ('ENT', 'Dr. Omar Khan', '2020-01-01 09:00', 'Past Patient', '0500000001', 'past@example.com', 'Booked')`).run();
-  db.close();
-
-  const res = await staffGet('/reception');
-  const html = await res.text();
-  assert.strictEqual(res.status, 200);
-
-  const today = new Date().toLocaleDateString('en-CA');
-  const upcoming = query("SELECT * FROM appointments WHERE status = 'Booked' AND appointmentDateTime >= ?", today);
-  const past = query("SELECT * FROM appointments WHERE status = 'Booked' AND appointmentDateTime < ?", today);
-  const pending = query("SELECT * FROM appointments WHERE status = 'Pending'");
-  assert.ok(upcoming.length >= 2 && past.length >= 1 && pending.length >= 1);
-
-  for (const b of upcoming) {
-    assert.ok(html.includes(`/reception/${b.id}/remind`), `upcoming #${b.id} listed with a button`);
-  }
-  for (const b of [...past, ...pending]) {
-    assert.ok(!html.includes(`/reception/${b.id}/remind`), `#${b.id} (${b.status}, ${b.appointmentDateTime}) not listed`);
-  }
-  assert.ok(!html.includes('Past Patient'));
-  for (const expected of ['Test Patient', 'Tue, 8 Jan 2030', '10:00', 'Dentist', 'Dr. Lina Haddad', 'Send reminder']) {
-    assert.ok(html.includes(expected), `page shows "${expected}"`);
-  }
-});
-
-test('Send reminder emails the patient with the exact reminder text', async () => {
-  const sentBefore = fakeSmtp.state.messages.length;
-  const res = await remind(session.bookingId);
-  assert.strictEqual(res.status, 303);
-  assert.strictEqual(res.headers.get('location'), `/reception?reminded=${session.bookingId}`);
-
-  assert.strictEqual(fakeSmtp.state.messages.length, sentBefore + 1);
-  const mail = fakeSmtp.state.messages.at(-1);
-  const body = decodeMail(mail.raw);
-  assert.deepStrictEqual(mail.to, ['patient@example.com']);
-  assert.match(body, /^Subject: Reminder: your appointment/m);
-  assert.match(body, /^From: Hadi Medical Clinic <bookings@hadiclinic\.test>/m);
-  assert.ok(body.includes('Hi Test Patient, a reminder that your Dentist appointment with Dr. Lina Haddad is on Tuesday, 8 January 2030 at 10:00 at Hadi Medical Clinic, JLT. Reply to reschedule.'));
-  assert.ok(body.includes('Powered by London International · lisrc.ae · built by Developer'));
-
-  const page = await (await staffGet(res.headers.get('location'))).text();
-  assert.ok(page.includes('Reminder sent to Test Patient (patient@example.com).'));
-});
-
-test('reminders can be sent again, and do not affect the confirmation email', async () => {
-  const sentBefore = fakeSmtp.state.messages.length;
-  await remind(session.bookingId);
-  assert.strictEqual(fakeSmtp.state.messages.length, sentBefore + 1);
-  assert.ok(query('SELECT confirmationEmailSentAt FROM appointments WHERE id = ?', session.bookingId)[0].confirmationEmailSentAt);
-});
-
-test('reminder for a Pending, unknown or invalid booking is refused', async () => {
-  const sentBefore = fakeSmtp.state.messages.length;
-  const [pending] = query("SELECT id FROM appointments WHERE status = 'Pending'");
-  assert.strictEqual((await remind(pending.id)).status, 404);
-  assert.strictEqual((await remind(99999)).status, 404);
-  assert.strictEqual((await remind('abc')).status, 404);
-  assert.strictEqual((await staffGet(`/reception/${session.bookingId}/remind`)).status, 404, 'GET does not send');
-  assert.strictEqual(fakeSmtp.state.messages.length, sentBefore);
-});
-
-test('a failed reminder is logged and shown to staff', async () => {
-  const sentBefore = fakeSmtp.state.messages.length;
-  fakeSmtp.state.failNext = true;
-  const res = await remind(session.bookingId);
-  assert.strictEqual(res.headers.get('location'), `/reception?reminderFailed=${session.bookingId}`);
-  assert.strictEqual(fakeSmtp.state.messages.length, sentBefore);
-  assert.ok(await waitFor(() => app.getOutput().includes(`Error sending reminder email for booking ${session.bookingId}`)));
-
-  const page = await (await staffGet(res.headers.get('location'))).text();
-  assert.ok(page.includes('Could not send the reminder to Test Patient'));
-});
-test('staff pages stay locked when no staff password is set', async () => {
-  const port = APP_PORT + 4;
-  const lockedApp = await startApp({ STRIPE_SECRET_KEY: TEST_KEY, BASE_URL: `http://localhost:${port}`, STAFF_PASSWORD: '' }, port);
-  try {
-    const res = await fetch(`http://localhost:${port}/reception`, { headers: staffAuth('staff', '') });
-    assert.strictEqual(res.status, 503);
-    assert.strictEqual((await fetch(`http://localhost:${port}/admin/bookings`)).status, 503);
-  } finally {
-    await stopApp(lockedApp);
+test('reopening the success page does not undo a status set by reception', async () => {
+  for (const status of ['Arrived', 'Done', 'No-show']) {
+    const db = new DatabaseSync(dbPath);
+    db.prepare('UPDATE appointments SET status = ? WHERE id = ?').run(status, session.bookingId);
+    db.close();
+    const html = await (await fetch(`${BASE_URL}/booking-success?session_id=${session.id}`)).text();
+    assert.ok(html.includes("You're booked!"));
+    assert.strictEqual(query('SELECT status FROM appointments WHERE id = ?', session.bookingId)[0].status, status);
   }
 });

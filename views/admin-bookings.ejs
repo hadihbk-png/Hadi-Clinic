@@ -49,14 +49,43 @@
     }
 
     .status-pending {
+      background: #e2e3e5;
+      color: #41464b;
+    }
+
+    .status-arrived {
       background: #fff3cd;
       color: #856404;
     }
 
+    .status-done {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .status-no-show {
+      background: #f8d7da;
+      color: #721c24;
+    }
+
     .booking-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
       gap: 20px;
+    }
+
+    @media (max-width: 576px) {
+      .admin-header {
+        padding: 1.5rem 1rem;
+      }
+
+      /* Email/phone links big enough to tap */
+      .booking-row a[href^="mailto:"],
+      .booking-row a[href^="tel:"] {
+        display: inline-block;
+        padding: 10px 0;
+        overflow-wrap: anywhere;
+      }
     }
   </style>
 </head>
@@ -134,7 +163,5 @@
   <!-- Footer -->
   <%- include('partials/footer') %>
 
-  <!-- Bootstrap 5 JS -->
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

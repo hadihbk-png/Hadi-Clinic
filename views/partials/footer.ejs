@@ -7,3 +7,152 @@
     </p>
   </div>
 </footer>
+
+<!-- Floating chat assistant: talks to POST /api/chat (no API keys in the browser) -->
+<style>
+  .chat-launcher {
+    position: fixed; right: 20px; bottom: 20px; z-index: 1050;
+    border: none; border-radius: 999px; padding: 12px 18px;
+    background: #0066cc; color: #fff; font-weight: 600;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.25); cursor: pointer;
+  }
+  .chat-launcher:hover { background: #0052a3; }
+  .chat-panel {
+    position: fixed; right: 20px; bottom: 80px; z-index: 1050;
+    width: 360px; max-width: calc(100vw - 32px); height: 480px; max-height: calc(100vh - 110px);
+    display: none; flex-direction: column; background: #fff;
+    border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.25); overflow: hidden;
+  }
+  .chat-panel.open { display: flex; }
+  .chat-header {
+    background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%); color: #fff;
+    padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;
+  }
+  .chat-header button {
+    background: none; border: none; color: #fff; font-size: 1.5rem; line-height: 1; cursor: pointer;
+    min-width: 44px; min-height: 44px; margin: -10px -12px -10px 0;
+  }
+  .chat-messages { flex: 1; overflow-y: auto; padding: 12px; background: #f8f9fa; }
+  .chat-msg {
+    max-width: 85%; padding: 8px 12px; border-radius: 12px; margin-bottom: 8px;
+    white-space: pre-line; overflow-wrap: anywhere; font-size: 0.93rem;
+  }
+  .chat-msg.user { background: #0066cc; color: #fff; margin-left: auto; border-bottom-right-radius: 4px; }
+  .chat-msg.assistant { background: #fff; color: #333; border: 1px solid #e3e6ea; border-bottom-left-radius: 4px; }
+  .chat-msg.error { background: #fdecea; color: #842029; }
+  .chat-form { display: flex; gap: 8px; padding: 10px; border-top: 1px solid #e3e6ea; }
+  .chat-form input { flex: 1; border: 1px solid #ced4da; border-radius: 8px; padding: 8px 10px; }
+  .chat-form button { border: none; border-radius: 8px; padding: 8px 14px; background: #0066cc; color: #fff; }
+  .chat-form button:disabled { opacity: 0.6; }
+  .chat-note { font-size: 0.75rem; color: #888; padding: 0 12px 8px; }
+  .chat-form input { font-size: 16px; } /* 16px+ stops iPhones zooming in on focus */
+  .chat-form button { min-height: 44px; }
+  @media (max-width: 576px) {
+    .chat-panel { right: 16px; left: 16px; width: auto; bottom: 76px; height: auto; top: 80px; max-height: none; }
+    /* Compact round button on phones so it covers less of the page */
+    .chat-launcher {
+      right: 16px; bottom: 16px; width: 56px; height: 56px; padding: 0;
+      display: flex; align-items: center; justify-content: center; font-size: 1.4rem;
+    }
+    .chat-launcher .chat-label { display: none; }
+    /* Room under the last content so the floating button never covers it */
+    footer { padding-bottom: 88px !important; }
+  }
+</style>
+
+<button type="button" class="chat-launcher" id="chatLauncher" aria-controls="chatPanel" aria-expanded="false" aria-label="Ask Hadi chat assistant">
+  <i class="bi bi-chat-dots"></i> <span class="chat-label">Ask Hadi</span>
+</button>
+
+<div class="chat-panel" id="chatPanel" role="dialog" aria-label="Ask Hadi chat assistant">
+  <div class="chat-header">
+    <strong><i class="bi bi-chat-dots"></i> Ask Hadi</strong>
+    <button type="button" id="chatClose" aria-label="Close chat">&times;</button>
+  </div>
+  <div class="chat-messages" id="chatMessages" aria-live="polite"></div>
+  <div class="chat-note">I answer questions about the clinic. I can't give medical advice. In an emergency call 999.</div>
+  <form class="chat-form" id="chatForm">
+    <input type="text" id="chatInput" maxlength="1000" placeholder="Ask about hours, doctors, booking…" autocomplete="off" aria-label="Your message" required>
+    <button type="submit" id="chatSend">Send</button>
+  </form>
+</div>
+
+<!-- Bootstrap 5 JS (loaded once, for every page: phone menu, etc.) -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+  (function () {
+    const STORAGE_KEY = 'askHadiChat';
+    const MAX_HISTORY = 20;
+    const GREETING = 'Hi! I can help with our specialties, doctors, opening hours, location and booking. What would you like to know?';
+
+    const launcher = document.getElementById('chatLauncher');
+    const panel = document.getElementById('chatPanel');
+    const list = document.getElementById('chatMessages');
+    const form = document.getElementById('chatForm');
+    const input = document.getElementById('chatInput');
+    const send = document.getElementById('chatSend');
+
+    // Conversation sent to the server (the greeting is display-only)
+    let history = [];
+    try { history = JSON.parse(sessionStorage.getItem(STORAGE_KEY)) || []; } catch (e) { history = []; }
+
+    function save() {
+      try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(history)); } catch (e) {}
+    }
+
+    function addBubble(role, text) {
+      const bubble = document.createElement('div');
+      bubble.className = 'chat-msg ' + role;
+      bubble.textContent = text; // plain text only, never HTML
+      list.appendChild(bubble);
+      list.scrollTop = list.scrollHeight;
+      return bubble;
+    }
+
+    addBubble('assistant', GREETING);
+    history.forEach(m => addBubble(m.role, m.content));
+
+    function setOpen(open) {
+      panel.classList.toggle('open', open);
+      launcher.setAttribute('aria-expanded', String(open));
+      if (open) input.focus();
+    }
+    launcher.addEventListener('click', () => setOpen(!panel.classList.contains('open')));
+    document.getElementById('chatClose').addEventListener('click', () => setOpen(false));
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+
+      input.value = '';
+      send.disabled = true;
+      addBubble('user', text);
+      history.push({ role: 'user', content: text });
+      // Keep the most recent turns, starting with a user message
+      while (history.length > MAX_HISTORY || history[0].role !== 'user') history.shift();
+      const typing = addBubble('assistant', '…');
+
+      try {
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: history })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.reply) throw new Error(data.error || 'Something went wrong. Please try again.');
+
+        typing.textContent = data.reply;
+        history.push({ role: 'assistant', content: data.reply });
+      } catch (error) {
+        typing.className = 'chat-msg error';
+        typing.textContent = error.message;
+        history.pop(); // let the visitor resend the same question
+      }
+      save();
+      send.disabled = false;
+      input.focus();
+    });
+  })();
+</script>

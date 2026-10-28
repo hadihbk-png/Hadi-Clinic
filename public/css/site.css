@@ -187,6 +187,66 @@ footer small {
   }
 }
 
+/* Mobile: comfortable tap targets and no zoom-on-focus */
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Keep section headings visible below the sticky header after a menu jump */
+section[id] {
+  scroll-margin-top: 72px;
+}
+
+.nav-book {
+  color: #fff !important;
+}
+
+@media (max-width: 991.98px) {
+  /* Phone menu: bigger rows to tap */
+  .navbar-nav .nav-link {
+    padding: 0.75rem 0;
+  }
+
+  .nav-book {
+    display: block;
+    margin: 0.5rem 0 0.75rem;
+    padding: 0.6rem 1rem;
+  }
+}
+
+@media (max-width: 576px) {
+  .btn {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+  }
+
+  .form-control,
+  .form-select {
+    font-size: 16px;
+    min-height: 44px;
+  }
+
+  /* Standalone phone/email links: easy to tap */
+  .contact-card a,
+  .contact-icon-box a,
+  .detail-list a {
+    display: inline-block;
+    padding: 10px 0;
+  }
+
+  h1 {
+    font-size: 1.75rem;
+  }
+
+  h2 {
+    font-size: 1.5rem;
+  }
+}
+
 /* Text Utilities */
 .text-primary {
   color: var(--primary-color) !important;

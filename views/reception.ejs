@@ -20,10 +20,65 @@
     }
 
     .admin-header {
+      position: relative;
       background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%);
       color: white;
       padding: 2rem;
       margin-bottom: 2rem;
+    }
+
+    .dashboard-label {
+      font-size: 0.8rem;
+      opacity: 0.85;
+      letter-spacing: 0.02em;
+    }
+
+    .builder-corner {
+      position: absolute;
+      top: 10px;
+      right: 16px;
+      font-size: 0.75rem;
+      opacity: 0.8;
+    }
+
+    .count-card {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      padding: 1rem 1.5rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .count-card .count {
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: #0066cc;
+      line-height: 1;
+    }
+
+    .doctor-card {
+      background: white;
+      border-radius: 6px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      margin-bottom: 1.5rem;
+      overflow: hidden;
+    }
+
+    .doctor-card h3 {
+      font-size: 1.1rem;
+      margin: 0;
+      padding: 0.75rem 1rem;
+      background: #eef4fb;
+      color: #0052a3;
+    }
+
+    .doctor-card td,
+    .doctor-card th,
+    .reception-table td,
+    .reception-table th {
+      vertical-align: middle;
     }
 
     .reception-table {
@@ -32,9 +87,91 @@
       box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
 
-    .reception-table td,
-    .reception-table th {
-      vertical-align: middle;
+    .status-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-weight: 600;
+      font-size: 0.8rem;
+    }
+
+    .status-booked { background: #d1ecf1; color: #0c5460; }
+    .status-arrived { background: #fff3cd; color: #856404; }
+    .status-done { background: #d4edda; color: #155724; }
+    .status-no-show { background: #f8d7da; color: #721c24; }
+
+    .actions form {
+      display: inline;
+    }
+
+    /* Phones and small tablets: each appointment becomes a stacked card */
+    @media (max-width: 767.98px) {
+      .admin-header {
+        padding: 2.25rem 1rem 1.25rem;
+      }
+
+      .admin-header h1 {
+        font-size: 1.6rem;
+      }
+
+      .stack-table thead {
+        display: none;
+      }
+
+      .stack-table,
+      .stack-table tbody,
+      .stack-table tr,
+      .stack-table td {
+        display: block;
+        width: 100%;
+      }
+
+      .stack-table tr {
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid #e3e6ea;
+      }
+
+      .stack-table td {
+        border: none;
+        padding: 0.15rem 0;
+        text-align: left !important;
+      }
+
+      .stack-table td[data-label]::before {
+        content: attr(data-label) ": ";
+        color: #666;
+        font-size: 0.85rem;
+      }
+
+      .stack-table td.patient-cell {
+        font-size: 1.05rem;
+      }
+
+      .stack-table .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding-top: 0.6rem;
+        white-space: normal !important;
+      }
+
+      .stack-table .actions form {
+        display: block;
+        flex: 1 1 30%;
+      }
+
+      .stack-table .actions .reminder-form {
+        flex-basis: 100%;
+      }
+
+      .stack-table .actions .btn {
+        width: 100%;
+        min-height: 44px;
+      }
+
+      .count-card {
+        display: flex;
+      }
     }
   </style>
 </head>
@@ -44,21 +181,33 @@
 
   <!-- Reception Header -->
   <div class="admin-header">
+    <div class="builder-corner">by <%= builtBy %></div>
     <div class="container">
-      <h1><i class="bi bi-person-workspace"></i> Reception</h1>
-      <p class="mb-0">Confirmed appointments and patient reminders</p>
+      <div class="dashboard-label">Hadi Clinic Reception — London International · lisrc.ae</div>
+      <div class="d-flex justify-content-between align-items-end flex-wrap gap-2">
+        <div>
+          <h1 class="mb-1"><i class="bi bi-person-workspace"></i> Reception</h1>
+          <p class="mb-0">
+            <% const [y, m, d] = today.split('-').map(Number); %>
+            <%= new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }) %>
+            <small class="opacity-75">(Dubai time)</small>
+          </p>
+        </div>
+        <form method="POST" action="/logout">
+          <small class="me-2 opacity-75"><%= user.email %></small>
+          <button type="submit" class="btn btn-sm btn-outline-light">
+            <i class="bi bi-box-arrow-right"></i> Log out
+          </button>
+        </form>
+      </div>
     </div>
   </div>
 
   <!-- Content -->
   <div class="container" style="margin-bottom: 3rem;">
-    <div class="row mb-4">
-      <div class="col-12">
-        <h2 class="text-primary fw-bold mb-1">
-          <i class="bi bi-calendar-check"></i> Upcoming Booked Appointments
-        </h2>
-        <p class="text-muted">From today onwards: <strong><%= bookings.length %></strong></p>
-      </div>
+    <div class="count-card mb-4">
+      <span class="count" id="todayCount"><%= todayCount %></span>
+      <span>appointment<%= todayCount === 1 ? '' : 's' %> today</span>
     </div>
 
     <% if (notice) { %>
@@ -68,14 +217,74 @@
       </div>
     <% } %>
 
-    <% if (bookings.length === 0) { %>
+    <h2 class="text-primary fw-bold h4 mb-3"><i class="bi bi-calendar-day"></i> Today's Appointments</h2>
+
+    <% if (doctors.length === 0) { %>
       <div class="alert alert-info" role="alert">
         <i class="bi bi-info-circle"></i>
-        No upcoming booked appointments. Appointments appear here once the patient's deposit is paid.
+        No confirmed appointments today.
+      </div>
+    <% } %>
+
+    <% doctors.forEach(group => { %>
+      <div class="doctor-card">
+        <h3><i class="bi bi-person-badge"></i> <%= group.doctor %>
+          <small class="text-muted fw-normal">(<%= group.appointments.length %>)</small>
+        </h3>
+        <div class="table-responsive">
+          <table class="table table-hover mb-0 stack-table">
+            <thead class="table-light">
+              <tr>
+                <th>Patient</th>
+                <th>Time</th>
+                <th>Specialty</th>
+                <th>Status</th>
+                <th class="text-end">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% group.appointments.forEach(appointment => { %>
+                <tr>
+                  <td class="patient-cell"><strong><%= appointment.patientName %></strong></td>
+                  <td data-label="Time"><%= appointment.appointmentDateTime.split(' ')[1] %></td>
+                  <td data-label="Specialty"><%= appointment.specialty %></td>
+                  <td data-label="Status">
+                    <span class="status-badge status-<%= appointment.status.toLowerCase() %>"><%= appointment.status %></span>
+                  </td>
+                  <td class="text-end text-nowrap actions">
+                    <% visitStatuses.forEach(status => { %>
+                      <form method="POST" action="/reception/<%= appointment.id %>/status">
+                        <input type="hidden" name="status" value="<%= status %>">
+                        <button type="submit" class="btn btn-sm <%= appointment.status === status ? 'btn-secondary' : 'btn-outline-secondary' %>"
+                          <%= appointment.status === status ? 'disabled' : '' %>><%= status %></button>
+                      </form>
+                    <% }) %>
+                    <% if (appointment.status === 'Booked') { %>
+                      <form method="POST" action="/reception/<%= appointment.id %>/remind" class="reminder-form">
+                        <button type="submit" class="btn btn-sm btn-outline-primary">
+                          <i class="bi bi-envelope"></i> Send reminder
+                        </button>
+                      </form>
+                    <% } %>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    <% }) %>
+
+    <h2 class="text-primary fw-bold h4 mt-5 mb-3"><i class="bi bi-calendar-week"></i> Upcoming (from tomorrow)</h2>
+
+    <% if (upcoming.length === 0) { %>
+      <div class="alert alert-info" role="alert">
+        <i class="bi bi-info-circle"></i>
+        No upcoming booked appointments.
       </div>
     <% } else { %>
       <div class="table-responsive reception-table">
-        <table class="table table-hover mb-0">
+        <table class="table table-hover mb-0 stack-table">
           <thead class="table-light">
             <tr>
               <th>Patient</th>
@@ -86,21 +295,21 @@
             </tr>
           </thead>
           <tbody>
-            <% bookings.forEach(booking => { %>
+            <% upcoming.forEach(booking => { %>
               <% const [datePart, timePart] = booking.appointmentDateTime.split(' '); %>
               <% const [year, month, day] = datePart.split('-').map(Number); %>
               <tr>
-                <td>
+                <td class="patient-cell">
                   <strong><%= booking.patientName %></strong><br>
                   <small class="text-muted"><%= booking.patientEmail %></small>
                 </td>
-                <td>
+                <td data-label="When">
                   <%= new Date(Date.UTC(year, month - 1, day)).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) %>
                   <br><small class="text-muted"><%= timePart %></small>
                 </td>
-                <td><%= booking.specialty %></td>
-                <td><%= booking.doctor %></td>
-                <td class="text-end">
+                <td data-label="Specialty"><%= booking.specialty %></td>
+                <td data-label="Doctor"><%= booking.doctor %></td>
+                <td class="text-end actions">
                   <form method="POST" action="/reception/<%= booking.id %>/remind" class="reminder-form">
                     <button type="submit" class="btn btn-sm btn-outline-primary text-nowrap">
                       <i class="bi bi-envelope"></i> Send reminder
@@ -118,8 +327,6 @@
   <!-- Footer -->
   <%- include('partials/footer') %>
 
-  <!-- Bootstrap 5 JS -->
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script>
     // Prevent double-sending while the email goes out
     document.querySelectorAll('.reminder-form').forEach(form => {

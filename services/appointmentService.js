@@ -1,6 +1,70 @@
 const db = require('../data/db');
 
+// Appointment times are stored as clinic wall-clock time (Dubai)
+const CLINIC_TIME_ZONE = 'Asia/Dubai';
+
+// Statuses reception can set from the dashboard
+const VISIT_STATUSES = ['Arrived', 'Done', 'No-show'];
+
 class AppointmentService {
+  /**
+   * Today's date at the clinic (YYYY-MM-DD, Asia/Dubai), whatever the server's time zone
+   * @param {Date} [now] - Current time
+   * @returns {string} Date
+   */
+  static clinicToday(now = new Date()) {
+    // en-CA formats as YYYY-MM-DD
+    return now.toLocaleDateString('en-CA', { timeZone: CLINIC_TIME_ZONE });
+  }
+
+  /**
+   * Add days to a YYYY-MM-DD date
+   * @param {string} date - Date
+   * @param {number} days - Days to add
+   * @returns {string} Date
+   */
+  static addDays(date, days) {
+    const [year, month, day] = date.split('-').map(Number);
+    return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+  }
+
+  /**
+   * Get a day's confirmed appointments (unpaid Pending ones excluded),
+   * sorted by doctor then time
+   * @param {string} date - Date (YYYY-MM-DD)
+   * @returns {Array} Array of appointments
+   */
+  static getAppointmentsForDate(date) {
+    const stmt = db.prepare(`
+      SELECT * FROM appointments
+      WHERE appointmentDateTime >= ? AND appointmentDateTime < ?
+        AND status != 'Pending'
+      ORDER BY doctor ASC, appointmentDateTime ASC
+    `);
+
+    return stmt.all(date, AppointmentService.addDays(date, 1));
+  }
+
+  /**
+   * Set an appointment's visit status from reception (Arrived, Done, No-show).
+   * Unpaid (Pending) appointments can't be changed.
+   * @param {number} bookingId - Booking ID
+   * @param {string} status - One of VISIT_STATUSES
+   * @returns {boolean} True if updated
+   */
+  static setVisitStatus(bookingId, status) {
+    if (!VISIT_STATUSES.includes(status)) {
+      return false;
+    }
+    const stmt = db.prepare(`
+      UPDATE appointments
+      SET status = ?
+      WHERE id = ? AND status != 'Pending'
+    `);
+
+    return stmt.run(status, bookingId).changes > 0;
+  }
+
   /**
    * Create a new booking
    * @param {Object} bookingData - Booking information
@@ -214,5 +278,8 @@ class AppointmentService {
     return stmt.all();
   }
 }
+
+AppointmentService.CLINIC_TIME_ZONE = CLINIC_TIME_ZONE;
+AppointmentService.VISIT_STATUSES = VISIT_STATUSES;
 
 module.exports = AppointmentService;
