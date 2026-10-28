@@ -2,8 +2,20 @@ const fs = require('fs');
 const path = require('path');
 const { DatabaseSync } = require('node:sqlite');
 
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'lakeside.db');
+// On Vercel the app's own folder is read-only; /tmp is the only writable place.
+// /tmp is temporary and not shared between Vercel instances, so data there
+// can disappear at any time - fine for a demo, not for real bookings.
+const ON_VERCEL = Boolean(process.env.VERCEL);
+const DEFAULT_DB_PATH = ON_VERCEL
+  ? path.join('/tmp', 'lakeside.db')
+  : path.join(__dirname, '..', 'data', 'lakeside.db');
+const DB_PATH = process.env.DB_PATH || DEFAULT_DB_PATH;
 const DATA_DIR = path.dirname(DB_PATH);
+
+if (ON_VERCEL && !process.env.DB_PATH) {
+  console.warn('WARNING: running on Vercel with a temporary SQLite database in /tmp - ' +
+    'bookings, logins and payments records are NOT kept between restarts or shared between instances.');
+}
 
 // Ensure data directory exists
 if (!fs.existsSync(DATA_DIR)) {
