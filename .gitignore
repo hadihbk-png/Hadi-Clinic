@@ -1,0 +1,4 @@
+node_modules
+.env
+# SQLite databases and their -shm/-wal side files (contain patient bookings)
+data/*.db*

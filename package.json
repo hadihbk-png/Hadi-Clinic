@@ -1,0 +1,23 @@
+{
+  "name": "hadi-clinic",
+  "version": "1.0.0",
+  "description": "Professional medical clinic website",
+  "main": "server.js",
+  "scripts": {
+    "dev": "node --watch server.js",
+    "start": "node server.js",
+    "test": "node --test test/deposit-flow.test.js",
+    "test:deposit": "node --test test/deposit-flow.test.js",
+    "demo:payments": "node test/demo-local-payments.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "ejs": "^7.0.2",
+    "express": "^5.3.0",
+    "nodemailer": "^10.2.1",
+    "stripe": "^23.0.1"
+  }
+}
