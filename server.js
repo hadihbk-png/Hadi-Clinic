@@ -26,6 +26,13 @@ startup.catch(error => console.error('Startup failed:', error.message));
 const app = express();
 const PORT = process.env.PORT || 3005;
 
+// On Vercel, requests arrive through Vercel's HTTPS proxy: trust its
+// X-Forwarded-* headers so req.protocol is "https" (same-site checks and
+// Secure login cookies depend on it)
+if (process.env.VERCEL) {
+  app.set('trust proxy', true);
+}
+
 // Set view engine
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));

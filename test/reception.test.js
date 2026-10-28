@@ -352,3 +352,23 @@ test('too many failed logins are slowed down', async () => {
     await stopApp(limitedApp);
   }
 });
+
+test('behind Vercel\'s HTTPS proxy: same-site login works and the cookie is Secure', async () => {
+  const port = APP_PORT + 4;
+  const proxied = await startApp({ VERCEL: '1' }, port, path.join(tmpDir, 'vercel.db'));
+  try {
+    const post = origin => fetch(`http://localhost:${port}/login`, {
+      method: 'POST',
+      redirect: 'manual',
+      // What Vercel's proxy passes on for a browser on https://<site>
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Forwarded-Proto': 'https', Origin: origin },
+      body: new URLSearchParams({ email: EMAIL, password: PASSWORD })
+    });
+    const res = await post(`https://localhost:${port}`);
+    assert.strictEqual(res.status, 303, 'same-site HTTPS login accepted');
+    assert.match(res.headers.getSetCookie()[0], /Secure/);
+    assert.strictEqual((await post('https://evil.example')).status, 403, 'other sites still blocked');
+  } finally {
+    await stopApp(proxied);
+  }
+});
