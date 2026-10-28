@@ -5,8 +5,10 @@ const db = require('../data/db');
 const BCRYPT_ROUNDS = 12;
 const SESSION_HOURS = 12;
 
-// Compared against when the email is unknown, so timing doesn't reveal which emails exist
-const DUMMY_HASH = bcrypt.hashSync('not-a-real-password', BCRYPT_ROUNDS);
+// Compared against when the email is unknown, so timing doesn't reveal which emails exist.
+// Made on first use rather than at startup, to keep serverless cold starts fast.
+let dummyHash = null;
+const getDummyHash = async () => (dummyHash = dummyHash || await bcrypt.hash('not-a-real-password', BCRYPT_ROUNDS));
 
 const hashToken = token => crypto.createHash('sha256').update(token).digest('hex');
 
@@ -14,9 +16,9 @@ class UserService {
   /**
    * Create or update the reception staff account from .env
    * (RECEPTION_EMAIL, RECEPTION_PASSWORD). Runs on startup.
-   * @returns {boolean} True if the account is ready to log in
+   * @returns {Promise<boolean>} True if the account is ready to log in
    */
-  static seedReceptionUser() {
+  static async seedReceptionUser() {
     const email = (process.env.RECEPTION_EMAIL || 'reception@hadiclinic.local').trim().toLowerCase();
     const password = process.env.RECEPTION_PASSWORD;
 
@@ -25,23 +27,26 @@ class UserService {
       return false;
     }
 
-    const existing = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    const existing = await db.get('SELECT * FROM users WHERE email = ?', email);
     if (!existing) {
-      db.prepare("INSERT INTO users (email, passwordHash, role) VALUES (?, ?, 'reception')")
-        .run(email, bcrypt.hashSync(password, BCRYPT_ROUNDS));
-      console.log(`Reception user created: ${email}`);
-      return true;
+      // OR IGNORE: another instance starting at the same moment may have just created it
+      const result = await db.run("INSERT OR IGNORE INTO users (email, passwordHash, role) VALUES (?, ?, 'reception')",
+        email, await bcrypt.hash(password, BCRYPT_ROUNDS));
+      if (result.changes === 1) {
+        console.log(`Reception user created: ${email}`);
+        return true;
+      }
+      return UserService.seedReceptionUser();
     }
 
     // Keep the stored hash in step with .env, and make sure the role is right
-    if (!bcrypt.compareSync(password, existing.passwordHash)) {
-      db.prepare('UPDATE users SET passwordHash = ? WHERE id = ?')
-        .run(bcrypt.hashSync(password, BCRYPT_ROUNDS), existing.id);
-      db.prepare('DELETE FROM sessions WHERE userId = ?').run(existing.id); // old password's sessions end
+    if (!(await bcrypt.compare(password, existing.passwordHash))) {
+      await db.run('UPDATE users SET passwordHash = ? WHERE id = ?', await bcrypt.hash(password, BCRYPT_ROUNDS), existing.id);
+      await db.run('DELETE FROM sessions WHERE userId = ?', existing.id); // old password's sessions end
       console.log(`Reception password updated for ${email}`);
     }
     if (existing.role !== 'reception') {
-      db.prepare("UPDATE users SET role = 'reception' WHERE id = ?").run(existing.id);
+      await db.run("UPDATE users SET role = 'reception' WHERE id = ?", existing.id);
     }
     return true;
   }
@@ -53,8 +58,8 @@ class UserService {
    * @returns {Promise<Object|null>} User (without hash) or null
    */
   static async verifyLogin(email, password) {
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(String(email || '').trim());
-    const matches = await bcrypt.compare(String(password || ''), user ? user.passwordHash : DUMMY_HASH);
+    const user = await db.get('SELECT * FROM users WHERE email = ?', String(email || '').trim());
+    const matches = await bcrypt.compare(String(password || ''), user ? user.passwordHash : await getDummyHash());
     if (!user || !matches) {
       return null;
     }
@@ -64,40 +69,41 @@ class UserService {
   /**
    * Start a login session
    * @param {number} userId - User ID
-   * @returns {{token: string, maxAgeMs: number}} Cookie token and lifetime
+   * @returns {Promise<{token: string, maxAgeMs: number}>} Cookie token and lifetime
    */
-  static createSession(userId) {
+  static async createSession(userId) {
     const token = crypto.randomBytes(32).toString('base64url');
     const maxAgeMs = SESSION_HOURS * 60 * 60 * 1000;
-    db.prepare('DELETE FROM sessions WHERE expiresAt < ?').run(Date.now());
-    db.prepare('INSERT INTO sessions (tokenHash, userId, expiresAt) VALUES (?, ?, ?)')
-      .run(hashToken(token), userId, Date.now() + maxAgeMs);
+    await db.run('DELETE FROM sessions WHERE expiresAt < ?', Date.now());
+    await db.run('INSERT INTO sessions (tokenHash, userId, expiresAt) VALUES (?, ?, ?)',
+      hashToken(token), userId, Date.now() + maxAgeMs);
     return { token, maxAgeMs };
   }
 
   /**
    * Find the logged-in user for a session token
    * @param {string} token - Cookie token
-   * @returns {Object|null} User (without hash) or null
+   * @returns {Promise<Object|null>} User (without hash) or null
    */
-  static getSessionUser(token) {
+  static async getSessionUser(token) {
     if (!token) {
       return null;
     }
-    return db.prepare(`
+    return db.get(`
       SELECT users.id, users.email, users.role
       FROM sessions JOIN users ON users.id = sessions.userId
       WHERE sessions.tokenHash = ? AND sessions.expiresAt > ?
-    `).get(hashToken(token), Date.now()) || null;
+    `, hashToken(token), Date.now());
   }
 
   /**
    * End a login session
    * @param {string} token - Cookie token
+   * @returns {Promise<void>}
    */
-  static deleteSession(token) {
+  static async deleteSession(token) {
     if (token) {
-      db.prepare('DELETE FROM sessions WHERE tokenHash = ?').run(hashToken(token));
+      await db.run('DELETE FROM sessions WHERE tokenHash = ?', hashToken(token));
     }
   }
 }

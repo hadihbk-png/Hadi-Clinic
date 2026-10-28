@@ -32,17 +32,15 @@ class AppointmentService {
    * Get a day's confirmed appointments (unpaid Pending ones excluded),
    * sorted by doctor then time
    * @param {string} date - Date (YYYY-MM-DD)
-   * @returns {Array} Array of appointments
+   * @returns {Promise<Array>} Array of appointments
    */
   static getAppointmentsForDate(date) {
-    const stmt = db.prepare(`
+    return db.all(`
       SELECT * FROM appointments
       WHERE appointmentDateTime >= ? AND appointmentDateTime < ?
         AND status != 'Pending'
       ORDER BY doctor ASC, appointmentDateTime ASC
-    `);
-
-    return stmt.all(date, AppointmentService.addDays(date, 1));
+    `, date, AppointmentService.addDays(date, 1));
   }
 
   /**
@@ -50,19 +48,19 @@ class AppointmentService {
    * Unpaid (Pending) appointments can't be changed.
    * @param {number} bookingId - Booking ID
    * @param {string} status - One of VISIT_STATUSES
-   * @returns {boolean} True if updated
+   * @returns {Promise<boolean>} True if updated
    */
-  static setVisitStatus(bookingId, status) {
-    if (!VISIT_STATUSES.includes(status)) {
+  static async setVisitStatus(bookingId, status) {
+    if (!VISIT_STATUSES.includes(status) || !Number.isInteger(bookingId)) {
       return false;
     }
-    const stmt = db.prepare(`
+    const result = await db.run(`
       UPDATE appointments
       SET status = ?
       WHERE id = ? AND status != 'Pending'
-    `);
+    `, status, bookingId);
 
-    return stmt.run(status, bookingId).changes > 0;
+    return result.changes > 0;
   }
 
   /**
@@ -76,9 +74,9 @@ class AppointmentService {
    * @param {string} bookingData.patientPhone - Patient phone number
    * @param {string} bookingData.patientEmail - Patient email address
    * @param {string} [bookingData.status] - Initial status (defaults to 'Booked')
-   * @returns {Object} Created appointment with id
+   * @returns {Promise<Object>} Created appointment with id
    */
-  static createBooking(bookingData) {
+  static async createBooking(bookingData) {
     const {
       specialty,
       doctor,
@@ -93,7 +91,7 @@ class AppointmentService {
     // Combine date and time into DateTime format
     const appointmentDateTime = `${date} ${time}`;
 
-    const stmt = db.prepare(`
+    const result = await db.run(`
       INSERT INTO appointments (
         specialty,
         doctor,
@@ -103,17 +101,7 @@ class AppointmentService {
         patientEmail,
         status
       ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    const result = stmt.run(
-      specialty,
-      doctor,
-      appointmentDateTime,
-      patientName,
-      patientPhone,
-      patientEmail,
-      status
-    );
+    `, specialty, doctor, appointmentDateTime, patientName, patientPhone, patientEmail, status);
 
     return {
       id: result.lastInsertRowid,
@@ -131,16 +119,15 @@ class AppointmentService {
    * Save the Stripe Checkout Session id on a booking
    * @param {number} bookingId - Booking ID
    * @param {string} stripeSessionId - Stripe Checkout Session id
-   * @returns {boolean} Success
+   * @returns {Promise<boolean>} Success
    */
-  static setStripeSessionId(bookingId, stripeSessionId) {
-    const stmt = db.prepare(`
+  static async setStripeSessionId(bookingId, stripeSessionId) {
+    const result = await db.run(`
       UPDATE appointments
       SET stripeSessionId = ?
       WHERE id = ?
-    `);
+    `, stripeSessionId, bookingId);
 
-    const result = stmt.run(stripeSessionId, bookingId);
     return result.changes > 0;
   }
 
@@ -148,134 +135,124 @@ class AppointmentService {
    * Claim the right to send a booking's confirmation email. Atomic, so only
    * one request wins even if the success page is refreshed at the same time.
    * @param {number} bookingId - Booking ID
-   * @returns {boolean} True if this caller should send the email
+   * @returns {Promise<boolean>} True if this caller should send the email
    */
-  static claimConfirmationEmail(bookingId) {
-    const stmt = db.prepare(`
+  static async claimConfirmationEmail(bookingId) {
+    const result = await db.run(`
       UPDATE appointments
       SET confirmationEmailSentAt = CURRENT_TIMESTAMP
       WHERE id = ? AND confirmationEmailSentAt IS NULL
-    `);
+    `, bookingId);
 
-    return stmt.run(bookingId).changes === 1;
+    return result.changes === 1;
   }
 
   /**
    * Release a claim after sending failed, so the email can be retried
    * @param {number} bookingId - Booking ID
-   * @returns {boolean} Success
+   * @returns {Promise<boolean>} Success
    */
-  static releaseConfirmationEmail(bookingId) {
-    const stmt = db.prepare(`
+  static async releaseConfirmationEmail(bookingId) {
+    const result = await db.run(`
       UPDATE appointments
       SET confirmationEmailSentAt = NULL
       WHERE id = ?
-    `);
+    `, bookingId);
 
-    return stmt.run(bookingId).changes > 0;
+    return result.changes > 0;
   }
 
   /**
    * Get a booking by its Stripe Checkout Session id
    * @param {string} stripeSessionId - Stripe Checkout Session id
-   * @returns {Object|null} Appointment or null
+   * @returns {Promise<Object|null>} Appointment or null
    */
   static getBookingByStripeSessionId(stripeSessionId) {
-    const stmt = db.prepare(`
+    return db.get(`
       SELECT * FROM appointments
       WHERE stripeSessionId = ?
-    `);
-
-    return stmt.get(stripeSessionId);
+    `, stripeSessionId);
   }
 
   /**
    * Get all bookings for a specific email
    * @param {string} email - Patient email
-   * @returns {Array} Array of appointments
+   * @returns {Promise<Array>} Array of appointments
    */
   static getBookingsByEmail(email) {
-    const stmt = db.prepare(`
+    return db.all(`
       SELECT * FROM appointments
       WHERE patientEmail = ?
       ORDER BY appointmentDateTime DESC
-    `);
-
-    return stmt.all(email);
+    `, email);
   }
 
   /**
    * Get all bookings for a specific date
    * @param {string} date - Date in YYYY-MM-DD format
-   * @returns {Array} Array of appointments
+   * @returns {Promise<Array>} Array of appointments
    */
   static getBookingsByDate(date) {
-    const stmt = db.prepare(`
+    return db.all(`
       SELECT * FROM appointments
       WHERE DATE(appointmentDateTime) = ?
       ORDER BY appointmentDateTime
-    `);
-
-    return stmt.all(date);
+    `, date);
   }
 
   /**
    * Update booking status
    * @param {number} bookingId - Booking ID
    * @param {string} status - New status
-   * @returns {boolean} Success
+   * @returns {Promise<boolean>} Success
    */
-  static updateStatus(bookingId, status) {
-    const stmt = db.prepare(`
+  static async updateStatus(bookingId, status) {
+    const result = await db.run(`
       UPDATE appointments
       SET status = ?
       WHERE id = ?
-    `);
+    `, status, bookingId);
 
-    const result = stmt.run(status, bookingId);
     return result.changes > 0;
   }
 
   /**
    * Get a specific booking by ID
    * @param {number} bookingId - Booking ID
-   * @returns {Object|null} Appointment or null
+   * @returns {Promise<Object|null>} Appointment or null
    */
-  static getBookingById(bookingId) {
-    const stmt = db.prepare(`
+  static async getBookingById(bookingId) {
+    if (!Number.isInteger(bookingId)) {
+      return null;
+    }
+    return db.get(`
       SELECT * FROM appointments
       WHERE id = ?
-    `);
-
-    return stmt.get(bookingId);
+    `, bookingId);
   }
 
   /**
-   * Get confirmed (Booked) appointments from today onwards, soonest first
+   * Get confirmed (Booked) appointments from a date onwards, soonest first
    * @param {string} fromDate - First date to include (YYYY-MM-DD)
-   * @returns {Array} Array of appointments
+   * @returns {Promise<Array>} Array of appointments
    */
   static getUpcomingBookedAppointments(fromDate) {
-    const stmt = db.prepare(`
+    return db.all(`
       SELECT * FROM appointments
       WHERE status = 'Booked' AND appointmentDateTime >= ?
       ORDER BY appointmentDateTime ASC
-    `);
-
-    return stmt.all(fromDate);
+    `, fromDate);
   }
 
   /**
    * Get all bookings
-   * @returns {Array} Array of all appointments
+   * @returns {Promise<Array>} Array of all appointments
    */
   static getAllBookings() {
-    const stmt = db.prepare(`
+    return db.all(`
       SELECT * FROM appointments
       ORDER BY appointmentDateTime DESC
     `);
-
-    return stmt.all();
   }
 }
 

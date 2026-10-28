@@ -55,9 +55,14 @@ function startApp(env = {}, port = APP_PORT, db = dbPath) {
     });
     let output = '';
     child.getOutput = () => output;
+    let started = false;
     child.stdout.on('data', d => {
       output += d;
-      if (output.includes('Server running')) resolve(child);
+      if (!started && output.includes('Server running')) {
+        started = true;
+        // Pages wait for the database setup, so one request means tables and the reception user exist
+        fetch(`http://localhost:${port}/login`).then(() => resolve(child), reject);
+      }
     });
     child.stderr.on('data', d => { output += d; });
     child.on('exit', code => reject(new Error(`server exited (${code}): ${output}`)));

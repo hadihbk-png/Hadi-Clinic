@@ -2,6 +2,14 @@
 
 ## 🚀 Getting Started
 
+### Deploy to Vercel
+Vercel runs the app as serverless functions with a read-only disk, so the database must be hosted. The app uses **Turso** (hosted SQLite):
+1. In the Vercel project: **Storage → Create / Connect Database → Turso** (Marketplace), and connect it to this project. This adds `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`. (Or create a database at turso.tech and add those two variables yourself.)
+2. **Settings → Environment Variables**: add the variables from `.env.example` (`STRIPE_SECRET_KEY`, `BASE_URL` = your `https://…vercel.app` address, `RECEPTION_EMAIL`, `RECEPTION_PASSWORD`, `SMTP_*`, `BUILT_BY`, `ANTHROPIC_API_KEY`, `CLINIC_INSURANCE`).
+3. **Redeploy**. Tables are created automatically on first start; the startup log shows `database: turso`.
+
+Without `TURSO_DATABASE_URL` the app still starts on Vercel but keeps data in a temporary `/tmp` file (not kept, not shared between instances) - demo only. Locally, data stays in `data/lakeside.db`.
+
 ### Configure Stripe (test mode)
 Copy `.env.example` to `.env` and set:
 - `STRIPE_SECRET_KEY` - your Stripe **test** secret key (`sk_test_...`). Live keys are refused.

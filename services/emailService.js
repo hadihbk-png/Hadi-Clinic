@@ -173,7 +173,7 @@ class EmailService {
    * @returns {Promise<boolean>} True if this call sent the email
    */
   static async sendConfirmationOnce(booking) {
-    if (!AppointmentService.claimConfirmationEmail(booking.id)) {
+    if (!(await AppointmentService.claimConfirmationEmail(booking.id))) {
       return false;
     }
 
@@ -188,7 +188,8 @@ class EmailService {
       return true;
     } catch (error) {
       console.error(`Error sending confirmation email for booking ${booking.id}:`, error.message);
-      AppointmentService.releaseConfirmationEmail(booking.id);
+      await AppointmentService.releaseConfirmationEmail(booking.id).catch(releaseError =>
+        console.error(`Could not release email claim for booking ${booking.id}:`, releaseError.message));
       return false;
     }
   }

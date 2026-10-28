@@ -6,10 +6,10 @@ const EmailService = require('../services/emailService');
 /**
  * Message for the last button click (Post/Redirect/Get)
  * @param {Object} query - Request query
- * @returns {Object|null} Notice
+ * @returns {Promise<Object|null>} Notice
  */
-function getNotice(query) {
-  const booking = AppointmentService.getBookingById(Number(query.reminded || query.reminderFailed || query.updated));
+async function getNotice(query) {
+  const booking = await AppointmentService.getBookingById(Number(query.reminded || query.reminderFailed || query.updated));
   if (!booking) {
     return null;
   }
@@ -23,9 +23,9 @@ function getNotice(query) {
 }
 
 // GET - Reception dashboard: today's appointments by doctor, plus upcoming reminders
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   const today = AppointmentService.clinicToday();
-  const todays = AppointmentService.getAppointmentsForDate(today);
+  const todays = await AppointmentService.getAppointmentsForDate(today);
 
   // Group today's appointments by doctor (already sorted by doctor, then time)
   const doctors = [];
@@ -38,7 +38,7 @@ router.get('/', (req, res) => {
     group.appointments.push(appointment);
   }
 
-  const upcoming = AppointmentService.getUpcomingBookedAppointments(AppointmentService.addDays(today, 1));
+  const upcoming = await AppointmentService.getUpcomingBookedAppointments(AppointmentService.addDays(today, 1));
 
   res.render('reception', {
     today,
@@ -46,14 +46,14 @@ router.get('/', (req, res) => {
     doctors,
     upcoming,
     visitStatuses: AppointmentService.VISIT_STATUSES,
-    notice: getNotice(req.query)
+    notice: await getNotice(req.query)
   });
 });
 
 // POST - Mark an appointment Arrived, Done or No-show
-router.post('/:id/status', express.urlencoded({ extended: false }), (req, res) => {
+router.post('/:id/status', express.urlencoded({ extended: false }), async (req, res) => {
   const id = Number(req.params.id);
-  if (!AppointmentService.setVisitStatus(id, req.body.status)) {
+  if (!(await AppointmentService.setVisitStatus(id, req.body.status))) {
     return res.status(400).send('Unknown appointment or status');
   }
   res.redirect(303, `/reception?updated=${id}`);
@@ -61,7 +61,7 @@ router.post('/:id/status', express.urlencoded({ extended: false }), (req, res) =
 
 // POST - Send a reminder email for one Booked appointment
 router.post('/:id/remind', async (req, res) => {
-  const booking = AppointmentService.getBookingById(Number(req.params.id));
+  const booking = await AppointmentService.getBookingById(Number(req.params.id));
 
   if (!booking || booking.status !== 'Booked') {
     return res.status(404).send('Booked appointment not found');

@@ -219,7 +219,7 @@ router.post('/confirm', express.urlencoded({ extended: true }), async (req, res)
 
   try {
     // Save booking as Pending until the deposit is paid
-    const booking = AppointmentService.createBooking({
+    const booking = await AppointmentService.createBooking({
       specialty: specialties[specialty].name,
       doctor: specialties[specialty].doctor,
       date,
@@ -232,7 +232,7 @@ router.post('/confirm', express.urlencoded({ extended: true }), async (req, res)
 
     // Create the deposit Checkout Session and remember it on the booking
     const session = await PaymentService.createDepositCheckoutSession(booking);
-    AppointmentService.setStripeSessionId(booking.id, session.id);
+    await AppointmentService.setStripeSessionId(booking.id, session.id);
 
     // Send the patient to the Stripe-hosted checkout page
     res.redirect(303, session.url);
@@ -257,7 +257,7 @@ router.post('/confirm', express.urlencoded({ extended: true }), async (req, res)
 // GET /booking-success - Verify the deposit with Stripe before marking the booking as Booked
 async function bookingSuccess(req, res) {
   const sessionId = typeof req.query.session_id === 'string' ? req.query.session_id : '';
-  const booking = sessionId ? AppointmentService.getBookingByStripeSessionId(sessionId) : null;
+  const booking = sessionId ? await AppointmentService.getBookingByStripeSessionId(sessionId) : null;
 
   const renderResult = (viewData) => res.render('booking', {
     step: 6,
@@ -285,11 +285,12 @@ async function bookingSuccess(req, res) {
     if (session.payment_status === 'paid') {
       // Only promote Pending; never undo Arrived/Done/No-show set by reception
       if (booking.status === 'Pending') {
-        AppointmentService.updateStatus(booking.id, 'Booked');
+        await AppointmentService.updateStatus(booking.id, 'Booked');
         booking.status = 'Booked';
       }
-      // Sent in the background, at most once; failures are logged inside
-      EmailService.sendConfirmationOnce(booking);
+      // Sent at most once; failures are logged inside and never block the page.
+      // Awaited because serverless hosts (Vercel) may stop work left running after the response.
+      await EmailService.sendConfirmationOnce(booking);
       return renderResult({ showConfirmation: true, booking });
     }
   } catch (error) {

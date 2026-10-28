@@ -54,12 +54,12 @@ function isSameOrigin(req) {
  * @param {...string} roles - Allowed roles
  */
 function requireRole(...roles) {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     if (!isSameOrigin(req)) {
       return res.status(403).send('Cross-site request blocked');
     }
 
-    const user = UserService.getSessionUser(readCookie(req, SESSION_COOKIE));
+    const user = await UserService.getSessionUser(readCookie(req, SESSION_COOKIE));
     if (!user) {
       if (req.method === 'GET') {
         return res.redirect(`/login?next=${encodeURIComponent(req.originalUrl)}`);

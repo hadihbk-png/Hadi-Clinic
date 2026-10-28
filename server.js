@@ -16,11 +16,12 @@ const UserService = require('./services/userService');
 const { requireRole } = require('./services/auth');
 const https = require('https');
 
-// Initialize database
-require('./data/db');
+// Initialize database (tables are created/upgraded in the background)
+const db = require('./data/db');
 
-// Create/update the reception staff account from .env
-UserService.seedReceptionUser();
+// Then create/update the reception staff account from .env
+const startup = db.ready.then(() => UserService.seedReceptionUser());
+startup.catch(error => console.error('Startup failed:', error.message));
 
 const app = express();
 const PORT = process.env.PORT || 3005;
@@ -32,8 +33,19 @@ app.set('views', path.join(__dirname, 'views'));
 // Name shown in the "built by" sign-offs (footer and emails)
 app.locals.builtBy = process.env.BUILT_BY || 'Developer';
 
-// Serve static files
+// Serve static files (on Vercel, public/ is served by the CDN instead)
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Wait for the database to be ready before handling any page
+// (on Vercel a request can arrive while a new instance is still starting)
+app.use(async (req, res, next) => {
+  try {
+    await startup;
+    next();
+  } catch (error) {
+    res.status(503).send('The clinic website is temporarily unavailable. Please call +971 4 123 4567.');
+  }
+});
 
 // Image proxy route - proxy external images to avoid ORB issues
 app.get('/proxy-image', (req, res) => {
@@ -70,8 +82,8 @@ app.get('/', (req, res) => {
 app.use('/', authRoutes);
 
 // Admin bookings view (simple admin panel, reception staff only)
-app.get('/admin/bookings', requireRole('reception'), (req, res) => {
-  const allBookings = AppointmentService.getAllBookings();
+app.get('/admin/bookings', requireRole('reception'), async (req, res) => {
+  const allBookings = await AppointmentService.getAllBookings();
   res.render('admin-bookings', {
     bookings: allBookings
   });
@@ -91,5 +103,5 @@ app.get('/booking-success', bookingRoutes.bookingSuccess);
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
+  console.log(`Server running at http://localhost:${PORT} (database: ${db.storage})`);
 });

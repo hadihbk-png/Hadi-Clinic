@@ -46,14 +46,14 @@ router.post('/login', express.urlencoded({ extended: false }), async (req, res) 
   }
 
   failures.delete(req.ip);
-  const { token, maxAgeMs } = UserService.createSession(user.id);
+  const { token, maxAgeMs } = await UserService.createSession(user.id);
   setSessionCookie(req, res, token, maxAgeMs);
   res.redirect(303, next);
 });
 
 // POST /logout - end the session
-router.post('/logout', (req, res) => {
-  UserService.deleteSession(readCookie(req, SESSION_COOKIE));
+router.post('/logout', async (req, res) => {
+  await UserService.deleteSession(readCookie(req, SESSION_COOKIE));
   clearSessionCookie(res);
   res.redirect(303, '/login');
 });
